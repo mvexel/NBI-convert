@@ -5,7 +5,10 @@ import shapefile
 
 SRCDIR = '/osm/externaldata/nbi/2011/'
 OUTDIR = os.path.join(SRCDIR,'out')
-OUTFILENAME = 'all_viaducts.csv'
+OUTCSV = 'all_viaducts.csv'
+OUTSHP = 'all_viaducts'
+
+FIELDDEF = os.path.join(os.path.dirname(__file__), './fieldnames_lengths.csv')
 
 # Rows  in the source file that hold the lon and lat
 LONROW = 19
@@ -21,6 +24,19 @@ UNDERROW = 28
 
 # Row that holds the 'Features Intersected' information (field 6A)
 FEATURESROW = 10
+
+outshape = shapefile.Writer(shapefile.POINT)
+#outshape.autobalance = 1
+
+fielddefs = csv.reader(open(FIELDDEF, 'rb'))
+for row in fielddefs:
+    fieldname = row[0]
+    fieldlength = int(row[1]) or 50
+    outshape.field(fieldname, 'C', fieldlength)
+    #print('added field %s with length %i' % (fieldname, fieldlength))
+
+print('shapefile initialized with %i fields' % (len(outshape.fields)))
+#print(outshape.fields)
 
 def dmgToDecimal(dmgfield):
     try:
@@ -52,7 +68,7 @@ if not os.path.exists(OUTDIR):
 else:
     print('Output directory %s exists' % OUTDIR)
 
-outcsv = csv.writer(open(os.path.join(OUTDIR,OUTFILENAME), 'wb'), delimiter = ',', quotechar = '\'', quoting = csv.QUOTE_MINIMAL)
+outcsv = csv.writer(open(os.path.join(OUTDIR,OUTCSV), 'wb'), delimiter = ',', quotechar = '\'', quoting = csv.QUOTE_MINIMAL)
 
 for file in glob.glob(os.path.join(SRCDIR,'*.csv')):
     header = True
@@ -73,5 +89,9 @@ for file in glob.glob(os.path.join(SRCDIR,'*.csv')):
         if (isActualViaduct(row)):
             viaducts += 1
             outcsv.writerow(row)
+            outshape.point(row[LATROW], row[LONROW])
+            outshape.record(*row)
         total += 1
     print('viaducts: %s / total %i' % (viaducts,total))
+
+outshape.save(os.path.join(OUTDIR,OUTSHP))
