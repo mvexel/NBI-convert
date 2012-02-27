@@ -1,12 +1,14 @@
 import os
 import csv
 import glob
+import re
 import shapefile
 
 SRCDIR = '/osm/externaldata/nbi/2011/'
 OUTDIR = os.path.join(SRCDIR,'out')
-OUTCSV = 'all_viaducts.csv'
-OUTSHP = 'all_viaducts'
+OUTCSV = 'nbi_all_viaducts.csv'
+OUTCSVBAD = 'nbi_baddata.csv'
+OUTSHP = 'nbi_all_viaducts'
 
 FIELDDEF = os.path.join(os.path.dirname(__file__), './fieldnames_lengths.csv')
 
@@ -26,37 +28,36 @@ UNDERROW = 28
 FEATURESROW = 10
 
 outshape = shapefile.Writer(shapefile.POINT)
-#outshape.autobalance = 1
 
 fielddefs = csv.reader(open(FIELDDEF, 'rb'))
 for row in fielddefs:
     fieldname = row[0]
     fieldlength = int(row[1]) or 50
     outshape.field(fieldname, 'C', fieldlength)
-    #print('added field %s with length %i' % (fieldname, fieldlength))
 
-print('shapefile initialized with %i fields' % (len(outshape.fields)))
-#print(outshape.fields)
+print('shapefiles initialized with %i fields' % (len(outshape.fields)))
 
 def dmgToDecimal(dmgfield):
     try:
-        degs = dmgfield[:(len(dmgfield) - 6)]
-        mins = dmgfield[-6:-4]
-        secs = dmgfield[-4:]
-        secs = int(mins) * 60 + (float(secs) / 100)
+        leadingminus = 1 if dmgfield[0] == '-' else 0
+        degslength = len(dmgfield) - (6 - leadingminus)
+        degs = dmgfield[leadingminus:degslength]
+        mins = dmgfield[degslength:degslength + 2]
+        secs = dmgfield[degslength + 2:]
+        secs = int(mins) * 60 + (float(secs) / 10 ** (len(secs) - 2))
         decfraction = secs/3600
         return int(degs) + decfraction
     except ValueError:
-        print('coordinate field not valid: %s' % dmgfield)
+        print('coordinate field not valid: %s ' % dmgfield)
         return 0.0
 
 def isActualViaduct(row):
     if len(row[ONROW]) == 0 or len(row[UNDERROW]) == 0:
         return False
     # MvE's method
-    #return row[ONSERVICEROW] not in ('2','9','0') and row[UNDERSERVICEROW] not in ('2','5','7','9','0')
+    return row[ONSERVICEROW] not in ('2','9','0') and row[UNDERSERVICEROW] not in ('2','5','7','9','0')
     # PB's method
-    return  int(row[ONROW]) > 0 and int(row[UNDERROW]) > 0 and 'HILLSIDE' not in row[FEATURESROW].upper() 
+    #return  int(row[ONROW]) > 0 and int(row[UNDERROW]) > 0 and 'HILLSIDE' not in row[FEATURESROW].upper() 
 
 if not os.path.exists(SRCDIR):
     print('ERROR: Source path %s does not exist' % SRCDIR)
@@ -69,10 +70,13 @@ else:
     print('Output directory %s exists' % OUTDIR)
 
 outcsv = csv.writer(open(os.path.join(OUTDIR,OUTCSV), 'wb'), delimiter = ',', quotechar = '\'', quoting = csv.QUOTE_MINIMAL)
+outcsvbad = csv.writer(open(os.path.join(OUTDIR, OUTCSVBAD), 'wb'), delimiter = ',', quotechar = '\'', quoting = csv.QUOTE_MINIMAL)
 
 for file in glob.glob(os.path.join(SRCDIR,'*.csv')):
     header = True
     viaducts = 0
+    baddata = 0
+    badcoorddata = 0
     total = 0
     print('Processing file %s' % file)
     csvfile = csv.reader(open(file,'rb'),delimiter=',',quotechar='\'')
@@ -80,18 +84,24 @@ for file in glob.glob(os.path.join(SRCDIR,'*.csv')):
         if header:
             header = False
             continue
-        #print('Lon before conversion: %s' % row[LONROW])
-        #print('Lat before conversion: %s' % row[LATROW])
+        total += 1
+        row[LONROW] = row[LONROW].lstrip('-')
+        row[LATROW] = row[LATROW].lstrip('-')
+        if not (re.match('\d{8}', row[LONROW]) and re.match('\d{8,9}', row[LATROW])):
+            baddata += 1
+            outcsvbad.writerow(row)
+            continue
         row[LONROW] = dmgToDecimal(row[LONROW])
-        row[LATROW] = dmgToDecimal(row[LATROW])
-        #print('Lon after conversion: %s' % row[LONROW])
-        #print('Lat after conversion: %s' % row[LATROW])
+        row[LATROW] = -1 * dmgToDecimal(row[LATROW])
+        if row[LONROW] == 0.0 or row[LATROW] == 0.0:
+            badcoorddata += 1
+            outcsvbad.writerow(row)
+            continue
         if (isActualViaduct(row)):
             viaducts += 1
             outcsv.writerow(row)
             outshape.point(row[LATROW], row[LONROW])
             outshape.record(*row)
-        total += 1
-    print('viaducts: %s / total %i' % (viaducts,total))
+    print('viaducts: %i / bad coord fields: %i / bad coord field content %i / total %i' % (viaducts,baddata, badcoorddata, total))
 
 outshape.save(os.path.join(OUTDIR,OUTSHP))
