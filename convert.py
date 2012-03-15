@@ -41,13 +41,16 @@ def dmgToDecimal(dmgfield):
     try:
         leadingminus = 1 if dmgfield[0] == '-' else 0
         degslength = len(dmgfield) - (6)
-        degs = dmgfield[leadingminus:degslength]
+        degs = int(dmgfield[leadingminus:degslength])
         decfraction = 0.0
-        mins = dmgfield[degslength:degslength + 2]
+        mins = int(dmgfield[degslength:degslength + 2])
         secs = dmgfield[degslength + 2:]
-        secs = int(mins) * 60 + (float(secs) / 10 ** (len(secs) - 2))
+        secs = mins * 60 + (float(secs) / 10 ** (len(secs) - 2))
         decfraction = secs/3600
-        return int(degs) + decfraction
+        if statecode == "ks" and not doinglon:
+            decfraction = 1 - decfraction
+            degs = degs - 1
+        return degs + decfraction
     except ValueError:
         print('coordinate field not valid: %s ' % dmgfield)
         return 0.0
@@ -81,6 +84,8 @@ for file in glob.glob(os.path.join(SRCDIR,'*.csv')):
     total = 0
     print('Processing file %s' % file)
     statecode = os.path.split(file)[1][:2]
+#    if statecode == "ks": 
+#        continue
     csvfile = csv.reader(open(file,'rb'),delimiter=',',quotechar='\'')
     for row in csvfile:
         if header:
@@ -93,7 +98,9 @@ for file in glob.glob(os.path.join(SRCDIR,'*.csv')):
             baddata += 1
             outcsvbad.writerow(row)
             continue
+        doinglon = True
         row[LONROW] = dmgToDecimal(row[LONROW])
+        doinglon = False
         row[LATROW] = -1 * dmgToDecimal(row[LATROW])
         if row[LONROW] == 0.0 or row[LATROW] == 0.0:
             badcoorddata += 1
