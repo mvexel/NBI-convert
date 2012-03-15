@@ -40,8 +40,9 @@ print('shapefiles initialized with %i fields' % (len(outshape.fields)))
 def dmgToDecimal(dmgfield):
     try:
         leadingminus = 1 if dmgfield[0] == '-' else 0
-        degslength = len(dmgfield) - (6 - leadingminus)
+        degslength = len(dmgfield) - (6)
         degs = dmgfield[leadingminus:degslength]
+        decfraction = 0.0
         mins = dmgfield[degslength:degslength + 2]
         secs = dmgfield[degslength + 2:]
         secs = int(mins) * 60 + (float(secs) / 10 ** (len(secs) - 2))
@@ -79,15 +80,16 @@ for file in glob.glob(os.path.join(SRCDIR,'*.csv')):
     badcoorddata = 0
     total = 0
     print('Processing file %s' % file)
+    statecode = os.path.split(file)[1][:2]
     csvfile = csv.reader(open(file,'rb'),delimiter=',',quotechar='\'')
     for row in csvfile:
         if header:
             header = False
             continue
         total += 1
-        row[LONROW] = row[LONROW].lstrip('-')
-        row[LATROW] = row[LATROW].lstrip('-')
-        if not (re.match('\d{8}', row[LONROW]) and re.match('\d{8,9}', row[LATROW])):
+        #row[LONROW] = row[LONROW].lstrip('-')
+        #row[LATROW] = row[LATROW].lstrip('-')
+        if not (re.match('\d{8}', row[LONROW].lstrip('-')) and re.match('\d{8,9}', row[LATROW].lstrip('-'))):
             baddata += 1
             outcsvbad.writerow(row)
             continue
